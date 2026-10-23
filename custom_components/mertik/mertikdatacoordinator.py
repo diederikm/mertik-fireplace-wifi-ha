@@ -79,8 +79,28 @@ class MertikDataCoordinator(DataUpdateCoordinator):
         self.mertik.set_flame_height(flame_height)
 
     @property
+    def state(self) -> str:
+        return self.mertik.state
+
+    @property
+    def mode(self) -> str:
+        return self.mertik.mode
+
+    @property
+    def diagnostics(self) -> dict:
+        return self.mertik.diagnostics
+
+    def set_mode(self, mode) -> None:
+        self.mertik.set_mode(mode)
+        self.mertik.refresh_status()
+
+    @property
     def ambient_temperature(self) -> float:
         return self.mertik.ambient_temperature
+
+    @property
+    def target_temperature(self) -> float:
+        return self.mertik.target_temperature
 
     @property
     def is_light_on(self) -> bool:

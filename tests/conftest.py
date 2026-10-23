@@ -47,9 +47,11 @@ def mock_config_entry():
 @pytest.fixture
 def mock_socket():
     """Return a mock socket that doesn't connect anywhere."""
-    with patch("custom_components.mertik.mertik.socket.socket") as mock_sock_cls:
+    with patch("custom_components.mertik.mertik.socket.create_connection") as mock_connect:
         mock_sock = MagicMock()
-        mock_sock_cls.return_value = mock_sock
+        mock_sock.__enter__.return_value = mock_sock
+        mock_connect.return_value = mock_sock
+        mock_sock.create_connection = mock_connect
         mock_sock.recv.return_value = _build_status_bytes()
         yield mock_sock
 
@@ -60,11 +62,11 @@ def _build_status_bytes(
     light_level: int = 0x64,
     mode: str = "0",
     ambient_temp: int = 0xE6,
+    target_temp: int = 0xC8,
 ) -> bytes:
-    """Build a raw status response matching the Mertik protocol.
+    """Build a raw STX..ETX status frame matching the Mertik protocol.
 
-    After __sendCommand strips the first byte and the regex no-op, __processStatus
-    receives a string parsed at these indices:
+    After stripping STX, the frame is parsed at these indices:
 
         [0:12]   prefix (e.g. "303030300003")
         [12:14]  padding
@@ -73,8 +75,9 @@ def _build_status_bytes(
         [20:22]  light level (2 hex chars)
         [22:24]  padding
         [24:25]  mode (1 char)
-        [25:30]  padding
-        [30:32]  ambient temperature (2 hex chars)
+        [25:28]  padding
+        [28:32]  ambient temperature x10 (4 hex chars)
+        [32:36]  target temperature x10 (4 hex chars)
     """
     prefix = "303030300003"
     body = (
@@ -84,11 +87,11 @@ def _build_status_bytes(
         f"{light_level:02X}"        # [20:22] light level
         "00"                        # [22:24] padding
         f"{mode}"                   # [24:25] mode
-        "00000"                     # [25:30] padding
-        f"{ambient_temp:02X}"       # [30:32] ambient temp
+        "000"                       # [25:28] padding
+        f"{ambient_temp:04X}"       # [28:32] ambient temp
+        f"{target_temp:04X}"        # [32:36] target temp
     )
-    # __sendCommand strips the first byte, so prepend a dummy
-    raw = "\x02" + prefix + body
+    raw = "\x02" + prefix + body + "\x03"
     return raw.encode("ascii")
 
 

@@ -1,0 +1,44 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "data": {
+          "name": "Naam van de haard",
+          "host": "IP-adres van de haardregeling"
+        },
+        "description": "Kies apparaat.",
+        "title": "Apparaten"
+      }
+    },
+    "error": {
+      "cannot_connect": "Kan geen verbinding maken met de haard. Controleer het IP-adres en of het apparaat aan staat."
+    },
+    "abort": {
+      "already_configured": "Deze haard is al geconfigureerd."
+    }
+  },
+  "entity": {
+    "select": {
+      "mode": {
+        "name": "Modus",
+        "state": {
+          "manual": "Handbediening",
+          "eco": "Eco (vlammode)",
+          "temperature": "Thermostaat"
+        }
+      }
+    },
+    "sensor": {
+      "status": {
+        "name": "Status",
+        "state": {
+          "off": "Uit",
+          "standby": "Stand-by (waakvlam)",
+          "igniting": "Ontsteken",
+          "on": "Aan",
+          "shutting_down": "Uitschakelen"
+        }
+      }
+    }
+  }
+}

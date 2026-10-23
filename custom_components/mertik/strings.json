@@ -16,5 +16,29 @@
     "abort": {
       "already_configured": "This fireplace is already configured."
     }
+  },
+  "entity": {
+    "select": {
+      "mode": {
+        "name": "Mode",
+        "state": {
+          "manual": "Manual",
+          "eco": "Eco (flame wave)",
+          "temperature": "Thermostat"
+        }
+      }
+    },
+    "sensor": {
+      "status": {
+        "name": "Status",
+        "state": {
+          "off": "Off",
+          "standby": "Standby (pilot)",
+          "igniting": "Igniting",
+          "on": "On",
+          "shutting_down": "Shutting down"
+        }
+      }
+    }
   }
 }

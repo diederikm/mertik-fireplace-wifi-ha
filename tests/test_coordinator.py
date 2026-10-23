@@ -191,3 +191,24 @@ class TestAsyncUpdateData:
         mock_mertik.refresh_status.side_effect = Exception("Connection lost")
         with pytest.raises(UpdateFailed):
             await coordinator._async_update_data()
+
+
+class TestCoordinatorStateAndMode:
+    """State, mode and target temperature pass through; set_mode refreshes."""
+
+    def test_state(self, coordinator, mock_mertik):
+        mock_mertik.state = "standby"
+        assert coordinator.state == "standby"
+
+    def test_mode(self, coordinator, mock_mertik):
+        mock_mertik.mode = "eco"
+        assert coordinator.mode == "eco"
+
+    def test_target_temperature(self, coordinator, mock_mertik):
+        mock_mertik.target_temperature = 20.0
+        assert coordinator.target_temperature == 20.0
+
+    def test_set_mode_refreshes(self, coordinator, mock_mertik):
+        coordinator.set_mode("eco")
+        mock_mertik.set_mode.assert_called_once_with("eco")
+        mock_mertik.refresh_status.assert_called_once()

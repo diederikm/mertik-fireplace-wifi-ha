@@ -9,6 +9,8 @@ from homeassistant.const import UnitOfTemperature
 
 from custom_components.mertik.sensor import (
     MertikAmbientTemperatureSensorEntity,
+    MertikStatusSensorEntity,
+    MertikTargetTemperatureSensorEntity,
     async_setup_entry,
 )
 from custom_components.mertik.const import DOMAIN
@@ -58,10 +60,35 @@ class TestTemperatureSensor:
 class TestSensorPlatformSetup:
     """Test sensor platform async_setup_entry."""
 
-    async def test_creates_one_entity(self, hass, mock_coordinator, mock_config_entry):
+    async def test_creates_entities(self, hass, mock_coordinator, mock_config_entry):
         hass.data[DOMAIN] = {mock_config_entry.entry_id: mock_coordinator}
         added = []
         await async_setup_entry(hass, mock_config_entry, lambda e: added.extend(e))
 
-        assert len(added) == 1
-        assert isinstance(added[0], MertikAmbientTemperatureSensorEntity)
+        assert [type(e) for e in added] == [
+            MertikAmbientTemperatureSensorEntity,
+            MertikTargetTemperatureSensorEntity,
+            MertikStatusSensorEntity,
+        ]
+
+
+class TestTargetTemperatureSensor:
+    """Test the target temperature sensor entity."""
+
+    def test_value(self, hass, mock_coordinator):
+        mock_coordinator.target_temperature = 20.0
+        sensor = MertikTargetTemperatureSensorEntity(mock_coordinator, "test_entry", "My Fireplace")
+        assert sensor.unique_id == "test_entry-TargetTemperature"
+        assert sensor.native_value == 20.0
+
+
+class TestStatusSensor:
+    """Test the status (off/standby/igniting/on/shutting_down) sensor entity."""
+
+    def test_value_and_options(self, hass, mock_coordinator):
+        mock_coordinator.state = "standby"
+        sensor = MertikStatusSensorEntity(mock_coordinator, "test_entry", "My Fireplace")
+        assert sensor.unique_id == "test_entry-Status"
+        assert sensor.device_class == SensorDeviceClass.ENUM
+        assert sensor.options == ["off", "standby", "igniting", "on", "shutting_down"]
+        assert sensor.native_value == "standby"
