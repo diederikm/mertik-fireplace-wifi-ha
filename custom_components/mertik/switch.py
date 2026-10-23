@@ -37,6 +37,8 @@ class MertikOnOffSwitchEntity(CoordinatorEntity, SwitchEntity):
         return bool(self._dataservice.is_on)
 
     async def async_turn_on(self, **kwargs):
+        if self.is_on:
+            return
         await self.hass.async_add_executor_job(self._dataservice.ignite_fireplace)
         self._dataservice.mark_optimistic_on()
         self._dataservice.async_set_updated_data(None)
@@ -49,8 +51,8 @@ class MertikOnOffSwitchEntity(CoordinatorEntity, SwitchEntity):
 
 class MertikAuxOnOffSwitchEntity(CoordinatorEntity, SwitchEntity):
     _attr_has_entity_name = True
-    _attr_name = "Aux"
-    _attr_icon = "mdi:light"
+    _attr_translation_key = "aux"
+    _attr_icon = "mdi:fire"
 
     def __init__(self, dataservice, entry_id, device_name):
         super().__init__(dataservice)

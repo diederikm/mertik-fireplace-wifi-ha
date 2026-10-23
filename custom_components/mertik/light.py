@@ -16,7 +16,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
 class MertikLightEntity(CoordinatorEntity, LightEntity):
     _attr_has_entity_name = True
-    _attr_name = "Light"
+    _attr_translation_key = "light"
     _attr_color_mode = ColorMode.BRIGHTNESS
     _attr_supported_color_modes = {ColorMode.BRIGHTNESS}
 

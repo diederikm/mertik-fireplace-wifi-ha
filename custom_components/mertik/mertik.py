@@ -74,6 +74,11 @@ BIT_LIGHT_ON = 13
 # below the lowest manual step (0x80).
 STANDBY_MAX_RAW = 64
 
+# How long a fresh ignition must hold before the fireplace counts as lit. While
+# igniting, the module reports full burner output and drops its receiver link,
+# also on attempts where the pilot does not catch.
+IGNITION_SETTLE_SECONDS = 60
+
 # Light level range from the device
 DEVICE_LIGHT_MIN = 100
 DEVICE_LIGHT_MAX = 251
@@ -101,8 +106,10 @@ class Mertik:
     command opens its own connection and parses the newest status frame.
     """
 
-    def __init__(self, ip):
+    def __init__(self, ip, clock=time.monotonic):
         self.ip = ip
+        self._clock = clock
+        self._ignition_settles_at = None
         self._lock = threading.Lock()
         self.on = False
         self.flameHeight = 0
@@ -223,9 +230,16 @@ class Mertik:
         return self.flameHeight
 
     def set_flame_height(self, flame_height) -> None:
-        step_code = FLAME_HEIGHT_STEPS[flame_height - 1]
-        self._send_command(f"{CMD_FLAME_PREFIX}{step_code}{CMD_FLAME_SUFFIX}")
+        """Set 1-12, or 0 for standby (pilot only)."""
+        if flame_height == 0:
+            self._send_command(CMD_STANDBY)
+        else:
+            step_code = FLAME_HEIGHT_STEPS[flame_height - 1]
+            self._send_command(f"{CMD_FLAME_PREFIX}{step_code}{CMD_FLAME_SUFFIX}")
         self.refresh_status()
+
+    def _ignition_pending(self) -> bool:
+        return self._ignition_settles_at is not None and self._clock() < self._ignition_settles_at
 
     def _hex_to_bin(self, hex_str):
         return format(int(hex_str, 16), "b").zfill(len(hex_str) * 4)
@@ -291,7 +305,11 @@ class Mertik:
         if self._bit_at(status_bits, BIT_RECEIVER_CONNECTED):
             self._receiver_link_seen = True
         elif self._receiver_link_seen:
-            self._state = None
+            if self._ignition_pending():
+                self._ignition_settles_at = self._clock() + IGNITION_SETTLE_SECONDS
+                self._state = STATE_IGNITING
+            else:
+                self._state = None
             return
 
         self._shutting_down = self._bit_at(status_bits, BIT_SHUTTING_DOWN)
@@ -316,7 +334,16 @@ class Mertik:
             self._state = STATE_ON
         else:
             self._state = STATE_STANDBY
-        self.on = self._state in (STATE_ON, STATE_IGNITING)
+
+        if self._state == STATE_IGNITING:
+            self._ignition_settles_at = self._clock() + IGNITION_SETTLE_SECONDS
+        elif self._state in (STATE_OFF, STATE_SHUTTING_DOWN):
+            self._ignition_settles_at = None
+        elif self._ignition_pending():
+            self._state = STATE_IGNITING
+
+        # On means the pilot burns, as in the app: standby is on with the flame low.
+        self.on = self._state in (STATE_ON, STATE_STANDBY, STATE_IGNITING)
 
         raw_light = int(status_str[STATUS_LIGHT_LEVEL], 16)
         self._light_brightness = round(

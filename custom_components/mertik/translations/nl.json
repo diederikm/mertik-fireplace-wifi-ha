@@ -18,17 +18,28 @@
     }
   },
   "entity": {
-    "select": {
-      "mode": {
-        "name": "Modus",
-        "state": {
-          "manual": "Handbediening",
-          "eco": "Eco (vlammode)",
-          "temperature": "Thermostaat"
-        }
+    "switch": {
+      "aux": {
+        "name": "Tweede brander"
+      }
+    },
+    "number": {
+      "flame_height": {
+        "name": "Vlamhoogte"
+      }
+    },
+    "light": {
+      "light": {
+        "name": "Verlichting"
       }
     },
     "sensor": {
+      "ambient_temperature": {
+        "name": "Kamertemperatuur"
+      },
+      "target_temperature": {
+        "name": "Doeltemperatuur"
+      },
       "status": {
         "name": "Status",
         "state": {
@@ -37,6 +48,16 @@
           "igniting": "Ontsteken",
           "on": "Aan",
           "shutting_down": "Uitschakelen"
+        }
+      }
+    },
+    "select": {
+      "mode": {
+        "name": "Modus",
+        "state": {
+          "manual": "Handbediening",
+          "eco": "Eco",
+          "temperature": "Thermostaat"
         }
       }
     }

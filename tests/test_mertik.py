@@ -14,6 +14,14 @@ from tests.conftest import _build_status_bytes
 GUARD = "0080"  # guard flame (pilot) bit
 
 
+class FakeClock:
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        return self.now
+
+
 class TestMertikInit:
     """Test Mertik class initialization."""
 
@@ -535,7 +543,7 @@ class TestFireplaceState:
         mock_socket.recv.return_value = _build_status_bytes(flame_height=raw, status_bits="828A")
         device = Mertik("192.168.1.100")
         assert device.state == "standby"
-        assert device.is_on is False
+        assert device.is_on is True  # pilot burns: on, as in the app
         assert device.get_flame_height() == 0
         assert device.is_aux_on is True
 
@@ -629,23 +637,47 @@ class TestDiagnostics:
 class TestReceiverLink:
     """Frames sent while the module has lost its receiver link are not trusted."""
 
-    def test_real_ignition_sequence(self, mock_socket):
-        """Status words captured on a B6R-W2BE-0 while relighting from fully off."""
-        sequence = [
-            (0x00, "820A", "off"),
-            (0x00, "821A", "igniting"),
-            (0x00, "021A", None),  # receiver link lost
-            (0xFF, "828A", "on"),
-            (0xFF, "028A", None),
-            (0xFF, "008A", None),
-            (0x00, "820A", "off"),  # pilot did not hold, retry follows
+    def test_failed_ignition_never_shows_on(self, mock_socket):
+        """Captured on a B6R-W2BE-0: full output and link loss while a pilot fails to catch."""
+        clock = FakeClock()
+        sequence = [  # (seconds, burner, status word, expected state)
+            (0, 0x00, "820A", "off"),
+            (10, 0xFF, "8212", "igniting"),
+            (20, 0x00, "8212", "igniting"),
+            (30, 0x00, "0212", "igniting"),  # receiver link lost
+            (60, 0xFF, "828A", "igniting"),  # looks lit, but has not held yet
+            (80, 0xFF, "028A", "igniting"),
+            (90, 0xFF, "008A", "igniting"),
+            (100, 0x00, "820A", "off"),  # pilot did not catch
         ]
         mock_socket.recv.return_value = _build_status_bytes(flame_height=0x00, status_bits="820A")
-        device = Mertik("192.168.1.100")
-        for raw, bits, expected in sequence:
+        device = Mertik("192.168.1.100", clock=clock)
+        for seconds, raw, bits, expected in sequence:
+            clock.now = seconds
             mock_socket.recv.return_value = _build_status_bytes(flame_height=raw, status_bits=bits)
             device.refresh_status()
-            assert device.state == expected, bits
+            assert device.state == expected, (seconds, bits)
+
+    def test_successful_ignition_settles(self, mock_socket):
+        clock = FakeClock()
+        mock_socket.recv.return_value = _build_status_bytes(flame_height=0x00, status_bits="821A")
+        device = Mertik("192.168.1.100", clock=clock)
+        assert device.state == "igniting"
+
+        mock_socket.recv.return_value = _build_status_bytes(flame_height=0xFF, status_bits="828A")
+        clock.now = 30
+        device.refresh_status()
+        assert device.state == "igniting"
+        clock.now = 61
+        device.refresh_status()
+        assert device.state == "on"
+
+    def test_link_loss_outside_ignition_is_unknown(self, mock_socket):
+        mock_socket.recv.return_value = _build_status_bytes(flame_height=0xFF, status_bits="828A")
+        device = Mertik("192.168.1.100")
+        mock_socket.recv.return_value = _build_status_bytes(flame_height=0xFF, status_bits="028A")
+        device.refresh_status()
+        assert device.state is None
 
     def test_link_loss_keeps_last_reliable_values(self, mock_socket):
         mock_socket.recv.return_value = _build_status_bytes(flame_height=0xFF, status_bits="828A")
@@ -661,3 +693,12 @@ class TestReceiverLink:
         mock_socket.recv.return_value = _build_status_bytes(flame_height=0x80, status_bits="0080")
         device = Mertik("192.168.1.100")
         assert device.state == "on"
+
+
+class TestStandbyFlameLevel:
+    """Flame level 0 is standby, as on the app's slider."""
+
+    def test_set_zero_sends_standby(self, mertik_device, mock_socket):
+        mertik_device.set_flame_height(0)
+        standby = bytearray.fromhex(send_command_prefix + "3136303003")
+        assert call(standby) in mock_socket.sendall.call_args_list

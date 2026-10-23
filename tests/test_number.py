@@ -24,7 +24,7 @@ class TestFlameHeightEntity:
         assert number.unique_id == "test_entry-FlameHeight"
 
     def test_name(self, number):
-        assert number.name == "Flame Height"
+        assert number.translation_key == "flame_height"
 
     def test_has_entity_name(self, number):
         assert number.has_entity_name is True
@@ -39,7 +39,7 @@ class TestFlameHeightEntity:
         assert info["manufacturer"] == "Mertik Maxitrol"
 
     def test_min_value(self, number):
-        assert number.native_min_value == 1
+        assert number.native_min_value == 0
 
     def test_max_value(self, number):
         assert number.native_max_value == 12

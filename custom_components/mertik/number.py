@@ -16,9 +16,9 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
 class MertikFlameHeightEntity(CoordinatorEntity, NumberEntity):
     _attr_has_entity_name = True
-    _attr_name = "Flame Height"
+    _attr_translation_key = "flame_height"
     _attr_icon = "mdi:fire"
-    _attr_native_min_value = 1
+    _attr_native_min_value = 0
     _attr_native_max_value = 12
 
     def __init__(self, dataservice, entry_id, device_name):

@@ -26,7 +26,7 @@ class TestLightEntity:
         assert light.unique_id == "test_entry-Light"
 
     def test_name(self, light):
-        assert light.name == "Light"
+        assert light.translation_key == "light"
 
     def test_has_entity_name(self, light):
         assert light.has_entity_name is True
@@ -91,4 +91,4 @@ class TestLightPlatformSetup:
 
         assert len(added) == 1
         assert isinstance(added[0], MertikLightEntity)
-        assert added[0].name == "Light"
+        assert added[0].translation_key == "light"

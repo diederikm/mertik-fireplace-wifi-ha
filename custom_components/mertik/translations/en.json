@@ -18,17 +18,28 @@
     }
   },
   "entity": {
-    "select": {
-      "mode": {
-        "name": "Mode",
-        "state": {
-          "manual": "Manual",
-          "eco": "Eco (flame wave)",
-          "temperature": "Thermostat"
-        }
+    "switch": {
+      "aux": {
+        "name": "Second burner"
+      }
+    },
+    "number": {
+      "flame_height": {
+        "name": "Flame height"
+      }
+    },
+    "light": {
+      "light": {
+        "name": "Light"
       }
     },
     "sensor": {
+      "ambient_temperature": {
+        "name": "Room temperature"
+      },
+      "target_temperature": {
+        "name": "Target temperature"
+      },
       "status": {
         "name": "Status",
         "state": {
@@ -37,6 +48,16 @@
           "igniting": "Igniting",
           "on": "On",
           "shutting_down": "Shutting down"
+        }
+      }
+    },
+    "select": {
+      "mode": {
+        "name": "Mode",
+        "state": {
+          "manual": "Manual",
+          "eco": "Eco",
+          "temperature": "Thermostat"
         }
       }
     }

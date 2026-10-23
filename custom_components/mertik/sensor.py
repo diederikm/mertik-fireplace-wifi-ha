@@ -40,7 +40,7 @@ class MertikSensorEntity(CoordinatorEntity, SensorEntity):
 
 
 class MertikAmbientTemperatureSensorEntity(MertikSensorEntity):
-    _attr_name = "Ambient Temperature"
+    _attr_translation_key = "ambient_temperature"
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
 
@@ -53,7 +53,7 @@ class MertikAmbientTemperatureSensorEntity(MertikSensorEntity):
 
 
 class MertikTargetTemperatureSensorEntity(MertikSensorEntity):
-    _attr_name = "Target Temperature"
+    _attr_translation_key = "target_temperature"
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
 
