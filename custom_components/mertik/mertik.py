@@ -62,6 +62,7 @@ STATUS_AMBIENT_TEMP = slice(28, 32)
 STATUS_TARGET_TEMP = slice(32, 36)
 
 # Status bit indices (within the 16-bit binary representation of the status word)
+BIT_RECEIVER_CONNECTED = 0
 BIT_SHUTTING_DOWN = 7
 BIT_GUARD_FLAME = 8
 BIT_IGNITING = 11
@@ -109,6 +110,7 @@ class Mertik:
         self._raw_status_bits = None
         self._raw_mode = None
         self._raw_end = None
+        self._receiver_link_seen = False
         self._mode = MODE_MANUAL
         self._state = STATE_OFF
         self._shutting_down = False
@@ -282,6 +284,16 @@ class Mertik:
         self._raw_end = status_str[-2:]
 
         status_bits = status_str[STATUS_BITS]
+
+        # The module briefly loses its link to the fireplace receiver, e.g. while
+        # igniting; frames sent then carry unreliable values. Only devices that
+        # have reported the link bit before are judged on it.
+        if self._bit_at(status_bits, BIT_RECEIVER_CONNECTED):
+            self._receiver_link_seen = True
+        elif self._receiver_link_seen:
+            self._state = None
+            return
+
         self._shutting_down = self._bit_at(status_bits, BIT_SHUTTING_DOWN)
         self._guard_flame_on = self._bit_at(status_bits, BIT_GUARD_FLAME)
         self._igniting = self._bit_at(status_bits, BIT_IGNITING)

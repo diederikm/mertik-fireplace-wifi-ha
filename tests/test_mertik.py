@@ -624,3 +624,40 @@ class TestDiagnostics:
             "raw_mode": "0",
             "raw_end": "C8",
         }
+
+
+class TestReceiverLink:
+    """Frames sent while the module has lost its receiver link are not trusted."""
+
+    def test_real_ignition_sequence(self, mock_socket):
+        """Status words captured on a B6R-W2BE-0 while relighting from fully off."""
+        sequence = [
+            (0x00, "820A", "off"),
+            (0x00, "821A", "igniting"),
+            (0x00, "021A", None),  # receiver link lost
+            (0xFF, "828A", "on"),
+            (0xFF, "028A", None),
+            (0xFF, "008A", None),
+            (0x00, "820A", "off"),  # pilot did not hold, retry follows
+        ]
+        mock_socket.recv.return_value = _build_status_bytes(flame_height=0x00, status_bits="820A")
+        device = Mertik("192.168.1.100")
+        for raw, bits, expected in sequence:
+            mock_socket.recv.return_value = _build_status_bytes(flame_height=raw, status_bits=bits)
+            device.refresh_status()
+            assert device.state == expected, bits
+
+    def test_link_loss_keeps_last_reliable_values(self, mock_socket):
+        mock_socket.recv.return_value = _build_status_bytes(flame_height=0xFF, status_bits="828A")
+        device = Mertik("192.168.1.100")
+        mock_socket.recv.return_value = _build_status_bytes(flame_height=0x00, status_bits="008A")
+        device.refresh_status()
+        assert device.state is None
+        assert device.is_on is True
+        assert device.get_flame_height() == 12
+        assert device.diagnostics["raw_status_bits"] == "008A"
+
+    def test_devices_without_link_bit_are_unaffected(self, mock_socket):
+        mock_socket.recv.return_value = _build_status_bytes(flame_height=0x80, status_bits="0080")
+        device = Mertik("192.168.1.100")
+        assert device.state == "on"
