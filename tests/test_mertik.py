@@ -333,6 +333,44 @@ class TestConnectionHandling:
         with pytest.raises(OSError):
             device.refresh_status()
 
+    def test_missing_status_frame_resends_once(self, mock_socket):
+        device = Mertik("192.168.1.100")
+        mock_socket.sendall.reset_mock()
+        mock_socket.recv.side_effect = [b"", _build_status_bytes(flame_height=0xFF, status_bits=GUARD)]
+        device.aux_on()
+        assert mock_socket.sendall.call_count == 2
+        assert device.get_flame_height() == 12
+
+    def test_failed_connect_retried_once(self, mock_socket):
+        device = Mertik("192.168.1.100")
+        mock_socket.create_connection.reset_mock()
+        mock_socket.create_connection.side_effect = [OSError("refused"), mock_socket]
+        device.refresh_status()
+        assert mock_socket.create_connection.call_count == 2
+
+    def test_gives_up_after_two_attempts(self, mock_socket):
+        device = Mertik("192.168.1.100")
+        mock_socket.sendall.reset_mock()
+        mock_socket.recv.return_value = b""
+        with pytest.raises(ConnectionError):
+            device.refresh_status()
+        assert mock_socket.sendall.call_count == 2
+
+    def test_ignite_not_resent_after_delivery(self, mock_socket):
+        device = Mertik("192.168.1.100")
+        mock_socket.sendall.reset_mock()
+        mock_socket.recv.return_value = b""
+        with pytest.raises(ConnectionError):
+            device.ignite_fireplace()
+        assert mock_socket.sendall.call_count == 1
+
+    def test_ignite_retried_when_connect_fails(self, mock_socket):
+        device = Mertik("192.168.1.100")
+        mock_socket.sendall.reset_mock()
+        mock_socket.create_connection.side_effect = [OSError("refused"), mock_socket]
+        device.ignite_fireplace()
+        assert mock_socket.sendall.call_count == 1
+
     def test_frame_split_across_reads(self, mock_socket):
         raw = _build_status_bytes(flame_height=0xFF, status_bits=GUARD)
         mock_socket.recv.side_effect = [raw[:10], raw[10:]]

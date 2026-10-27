@@ -16,6 +16,11 @@ TCP_PORT = 2000
 SOCKET_TIMEOUT = 3
 RECV_BUFFER = 1024
 
+# The module often misses the first command after another client (HA's own
+# poll, or the app) has just disconnected; a second attempt shortly after works.
+COMMAND_ATTEMPTS = 2
+RETRY_DELAY_SECONDS = 1
+
 # Command payloads (appended to COMMAND_PREFIX)
 CMD_STANDBY = "3136303003"
 CMD_IGNITE = "314103"
@@ -180,7 +185,8 @@ class Mertik:
         self._send_command(CMD_AUX_OFF)
 
     def ignite_fireplace(self):
-        self._send_command(CMD_IGNITE)
+        # Not resent once delivered: a second ignite could restart the sequence.
+        self._send_command(CMD_IGNITE, resend=False)
 
     def refresh_status(self):
         self._send_command(CMD_REFRESH_STATUS)
@@ -247,17 +253,35 @@ class Mertik:
     def _bit_at(self, hex_str, index):
         return self._hex_to_bin(hex_str)[index : index + 1] == "1"
 
-    def _send_command(self, msg):
+    def _send_command(self, msg, resend=True):
+        """Send a command and process the status frame it answers with.
+
+        A failed connection is always retried, as nothing reached the module. A
+        command that was sent but got no status frame back is only resent when
+        resend is set; every command except ignite sets an absolute state, so
+        sending it twice is harmless.
+        """
         payload = bytearray.fromhex(COMMAND_PREFIX + msg)
 
-        with self._lock:
-            with socket.create_connection((self.ip, TCP_PORT), timeout=SOCKET_TIMEOUT) as client:
-                client.sendall(payload)
-                status = self._read_status(client)
+        for attempt in range(1, COMMAND_ATTEMPTS + 1):
+            sent = False
+            try:
+                with self._lock:
+                    with socket.create_connection((self.ip, TCP_PORT), timeout=SOCKET_TIMEOUT) as client:
+                        client.sendall(payload)
+                        sent = True
+                        status = self._read_status(client)
+                if status is None:
+                    raise ConnectionError(f"No status frame received from {self.ip}")
+            except OSError as err:
+                if attempt == COMMAND_ATTEMPTS or (sent and not resend):
+                    raise
+                _LOGGER.debug("Command to %s failed (%s), retrying", self.ip, err)
+                time.sleep(RETRY_DELAY_SECONDS)
+                continue
 
-        if status is None:
-            raise ConnectionError(f"No status frame received from {self.ip}")
-        self._process_status(status)
+            self._process_status(status)
+            return
 
     def _read_status(self, client):
         """Read until a complete status frame arrives; return the newest one."""

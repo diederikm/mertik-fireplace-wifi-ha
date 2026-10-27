@@ -47,7 +47,9 @@ def mock_config_entry():
 @pytest.fixture
 def mock_socket():
     """Return a mock socket that doesn't connect anywhere."""
-    with patch("custom_components.mertik.mertik.socket.create_connection") as mock_connect:
+    with patch("custom_components.mertik.mertik.socket.create_connection") as mock_connect, patch(
+        "custom_components.mertik.mertik.RETRY_DELAY_SECONDS", 0
+    ):
         mock_sock = MagicMock()
         mock_sock.__enter__.return_value = mock_sock
         mock_connect.return_value = mock_sock
