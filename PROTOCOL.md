@@ -11,6 +11,7 @@ Every statement is tagged with where it comes from:
 | **A** | Static analysis of the Barbas Gas Android app 1.5.51 (`com.iqontrol.interfocos`) and MyFire 1.5.55 (`com.iqontrol.mertik`), which share the same Flutter `mertik` package. Only names, constants and structure are described here; no app code is reproduced |
 | **V** | [`omarshahine/valor-fireplace-cli`](https://github.com/omarshahine/valor-fireplace-cli) `PROTOCOL.md` |
 | **T** | [`tritter/homebridge-mertik-fireplace`](https://github.com/tritter/homebridge-mertik-fireplace) |
+| **G** | [`DaveJesse/mertik-fireplace-wifi-with-thermostat`](https://github.com/DaveJesse/mertik-fireplace-wifi-with-thermostat) `PROTOCOL.md`: measured on a Gazco fire with a B6R-WME / B6R-W2BE-0 module (2026-10) |
 | **H** | Earlier Home Assistant / Homey integrations (this repository, `djerik/mertik-ha`, `erdebee/homey-mertik-wifi`) |
 
 Unverified statements are marked as such.
@@ -69,7 +70,11 @@ with a payload writes it. **A**
 | `0C` | | Reboot module | A |
 | `D0`-`D5`, `EE`, `EF`, `FE`, `61`, `DE` | | Wi-Fi credentials, web update, production data, MQTT, labs, Matter | A |
 
-The app's light slider maps 0-100 % to `pct/100*153 + 102`. **A**
+The app's light slider maps 0-100 % to `pct/100*153 + 102`. **A** On a Gazco fire, levels `63` and
+`66` leave the light dark, `77` is very dim, `88`-`BB` step up clearly and above `CC` there is little
+visible change. This integration spreads HA brightness over `77` `88` `99` `AA` `BB` `CC` `DD` `EE`
+`FB`, so the lowest setting lights. The level is reported with the light off too and reads `00` for a
+moment while igniting or shutting down. **G**
 
 ## Status frame (command `03`)
 
@@ -86,7 +91,7 @@ captured frames. **A M**
 | 22-23 | fan level | |
 | 24-25 | **system mode** | Char 24: `0` manual, `1` thermostat, `2` eco **T M**; `3` seen briefly during a mode change **M** |
 | 26-27 | system flags | `01` countdown, `02` thermostat, `04` user profile, `08` child lock, `10` programmer, `20` programs invalid **A** |
-| 28-31 | room temperature | x10, 16-bit (`00E1` = 22.5 °C) **A M** |
+| 28-31 | room temperature | x10, 16-bit (`00E1` = 22.5 °C) **A M**. `0666` when no handset is connected (F44) **G** |
 | 32-35 | set temperature | x10, 16-bit (`00C8` = 20.0 °C) **A M** |
 | 36- | name | ASCII, padded with `FF` |
 | | icon, Wi-Fi RSSI, handset mode, pilot mV, main mV, handset RSSI | Follow the name **A**; exact offsets unverified |
@@ -240,7 +245,7 @@ Each decimal value is encoded to the `xx xx` value by first encoding it to ASCII
 | Brightness | HEX | Description |
 |---|---|---|
 | Off | `30 30` | Turn the light off using the set action |
-| Value | `xx xx` | The brightness of the light (between `36 33` and `46 42`) |
+| Value | `xx xx` | The brightness of the light (between `36 33` and `46 42`; below `37 37` the light stays dark **G**) |
 
 | Status | HEX | Description |
 |---|---|---|

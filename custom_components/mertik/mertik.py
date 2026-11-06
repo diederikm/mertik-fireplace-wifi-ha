@@ -38,9 +38,10 @@ CMD_FLAME_SUFFIX = "03"
 CMD_BRIGHTNESS_PREFIX = "33304645"
 CMD_BRIGHTNESS_SUFFIX = "03"
 
-# Brightness device codes for min/max
-BRIGHTNESS_CODE_MAX = "4642"
-BRIGHTNESS_CODE_MIN = "3633"
+# Light levels that HA brightness 1-255 is spread over. Below 0x77 the light
+# stays dark even though it reports on, above 0xCC there is little visible
+# change (measured on a Gazco fire, DaveJesse/mertik-fireplace-wifi-with-thermostat).
+LIGHT_LEVELS = [0x77, 0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFB]
 
 # Flame height hex codes for steps 1-12 (ASCII hex of raw values 0x80..0xFF)
 FLAME_HEIGHT_STEPS = [
@@ -84,9 +85,8 @@ STANDBY_MAX_RAW = 64
 # also on attempts where the pilot does not catch.
 IGNITION_SETTLE_SECONDS = 60
 
-# Light level range from the device
-DEVICE_LIGHT_MIN = 100
-DEVICE_LIGHT_MAX = 251
+# Room temperature reported when no handset is connected (the app shows F44)
+NO_HANDSET_TEMPERATURE = "0666"
 
 # Operating modes reported in the mode character
 MODE_MANUAL = "manual"
@@ -201,18 +201,8 @@ class Mertik:
         self._send_command(CMD_LIGHT_OFF)
 
     def set_light_brightness(self, brightness) -> None:
-        normalized = (brightness - 1) / 254 * 100
-
-        if normalized == 100:
-            device_code = BRIGHTNESS_CODE_MAX
-        elif normalized == 0:
-            device_code = BRIGHTNESS_CODE_MIN
-        else:
-            level = 36 + round(normalized / 100 * 8)
-            if level >= 40:
-                level += 1  # Device skips code 40
-            device_code = f"{level:02d}{level:02d}"
-
+        index = round((max(1, min(brightness, 255)) - 1) / 254 * (len(LIGHT_LEVELS) - 1))
+        device_code = f"{LIGHT_LEVELS[index]:02X}".encode("ascii").hex()
         self._send_command(f"{CMD_BRIGHTNESS_PREFIX}{device_code}{CMD_BRIGHTNESS_SUFFIX}")
 
     def set_eco(self):
@@ -370,13 +360,16 @@ class Mertik:
         self.on = self._state in (STATE_ON, STATE_STANDBY, STATE_IGNITING)
 
         raw_light = int(status_str[STATUS_LIGHT_LEVEL], 16)
-        self._light_brightness = round(
-            ((raw_light - DEVICE_LIGHT_MIN) / (DEVICE_LIGHT_MAX - DEVICE_LIGHT_MIN)) * 255
-        )
-        if self._light_brightness < 0 or not self._light_on:
+        if not self._light_on:
             self._light_brightness = 0
+        elif raw_light or not self._light_brightness:
+            # The level reads 00 for a moment while igniting or shutting down
+            self._light_brightness = _light_level_to_brightness(raw_light)
 
-        self._ambient_temperature = _parse_temperature(status_str[STATUS_AMBIENT_TEMP])
+        ambient = status_str[STATUS_AMBIENT_TEMP]
+        self._ambient_temperature = (
+            None if ambient.upper() == NO_HANDSET_TEMPERATURE else _parse_temperature(ambient)
+        )
         self._target_temperature = _parse_temperature(status_str[STATUS_TARGET_TEMP])
 
 
@@ -398,6 +391,13 @@ def _nearest_flame_step(raw_flame):
     """Map a raw burner output to the nearest manual step (1-12)."""
     distances = [abs(raw_flame - step) for step in FLAME_HEIGHT_RAW]
     return distances.index(min(distances)) + 1
+
+
+def _light_level_to_brightness(raw_light):
+    """HA brightness for the light level nearest to the reported one."""
+    distances = [abs(raw_light - level) for level in LIGHT_LEVELS]
+    index = distances.index(min(distances))
+    return round(1 + index * 254 / (len(LIGHT_LEVELS) - 1))
 
 
 def _parse_temperature(hex_str):

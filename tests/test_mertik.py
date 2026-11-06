@@ -88,8 +88,14 @@ class TestStatusParsing:
         device = Mertik("192.168.1.100")
         assert device.ambient_temperature == 20.0
 
+    def test_ambient_temperature_no_handset(self, mock_socket):
+        """0666 means no handset is connected: no room temperature, not 102.6 C."""
+        mock_socket.recv.return_value = _build_status_bytes(ambient_temp=0x0666)
+        device = Mertik("192.168.1.100")
+        assert device.ambient_temperature is None
+
     def test_light_brightness_max(self, mock_socket):
-        """light_level 0xFB=251 with light on -> round(((251-100)/151)*255) = 255."""
+        """light_level 0xFB, the highest level, with light on -> 255."""
         # Use status_bits with bit 13 set (light_on) — need 16-bit value for stable indexing
         # Bit 13 in 16-bit: 2^(15-13) = 0x0004, plus 0x8000 base for 16-bit length
         mock_socket.recv.return_value = _build_status_bytes(
@@ -99,12 +105,12 @@ class TestStatusParsing:
         assert device.light_brightness == 255
 
     def test_light_brightness_minimum(self, mock_socket):
-        """light_level 0x64=100 -> round(((100-100)/151)*255) = 0."""
+        """light_level 0x77, the lowest level that lights, -> 1."""
         mock_socket.recv.return_value = _build_status_bytes(
-            light_level=0x64, status_bits="8004"
+            light_level=0x77, status_bits="8004"
         )
         device = Mertik("192.168.1.100")
-        assert device.light_brightness == 0
+        assert device.light_brightness == 1
 
     def test_light_off_brightness_zero(self, mock_socket):
         """When light is off, brightness is forced to 0."""
@@ -249,73 +255,48 @@ class TestFlameHeight:
 
 
 class TestLightBrightness:
-    """Test light brightness commands."""
+    """Test light brightness commands: HA 1-255 spread over nine light levels."""
+
+    def _sent_level(self, mertik_device, mock_socket, brightness):
+        mock_socket.sendall.reset_mock()
+        mertik_device.set_light_brightness(brightness)
+        payload = mock_socket.sendall.call_args[0][0].hex()[len(send_command_prefix):]
+        assert payload.startswith("33304645") and payload.endswith("03")
+        return bytes.fromhex(payload[8:12]).decode("ascii")
 
     def test_brightness_max(self, mertik_device, mock_socket):
-        """Brightness 255 -> device code 4642."""
+        """Brightness 255 -> full command with level FB."""
         mock_socket.sendall.reset_mock()
         mertik_device.set_light_brightness(255)
         expected = bytearray.fromhex(send_command_prefix + "33304645464203")
         mock_socket.sendall.assert_called_with(expected)
 
-    def test_brightness_min(self, mertik_device, mock_socket):
-        """Brightness 1 -> device code 3633."""
-        mock_socket.sendall.reset_mock()
-        mertik_device.set_light_brightness(1)
-        expected = bytearray.fromhex(send_command_prefix + "33304645363303")
-        mock_socket.sendall.assert_called_with(expected)
+    def test_brightness_min_lights(self, mertik_device, mock_socket):
+        """Brightness 1 -> level 77, the lowest level that lights (63 and 66 stay dark)."""
+        assert self._sent_level(mertik_device, mock_socket, 1) == "77"
+
+    def test_brightness_low_lights(self, mertik_device, mock_socket):
+        """A few percent still lights."""
+        assert self._sent_level(mertik_device, mock_socket, 10) == "77"
 
     def test_brightness_mid(self, mertik_device, mock_socket):
-        """brightness=128 -> normalized=50 -> l=40 -> l+=1=41 -> code '4141'."""
-        mock_socket.sendall.reset_mock()
-        mertik_device.set_light_brightness(128)
-        expected = bytearray.fromhex(send_command_prefix + "33304645414103")
-        mock_socket.sendall.assert_called_with(expected)
-
-    def test_brightness_skip_40(self, mertik_device, mock_socket):
-        """When l reaches 40, it skips to 41 (the skip-40 quirk)."""
-        # brightness where normalized=50 -> l=36+round(4.0)=40 -> 40>=40 -> l=41
-        mock_socket.sendall.reset_mock()
-        mertik_device.set_light_brightness(128)
-        cmd_bytes = mock_socket.sendall.call_args[0][0]
-        cmd_hex = cmd_bytes.hex()
-        # The device code is after "33304645" prefix, extract it
-        payload = cmd_hex[len(send_command_prefix):]
-        # payload = "33304645XXYY03", device_code = payload[8:12]
-        device_code = payload[8:12]
-        assert device_code == "4141"  # 41 (skipped 40)
-
-    def test_brightness_just_below_skip(self, mertik_device, mock_socket):
-        """Brightness where l=39 (below skip threshold)."""
-        # normalized = (b-1)/254*100, l = 36 + round(normalized/100*8)
-        # l=39 -> round(normalized/100*8)=3 -> normalized=37.5 -> b=1+37.5*254/100=96.25
-        # b=96: normalized=(95/254)*100=37.40, l=36+round(2.99)=36+3=39
-        mock_socket.sendall.reset_mock()
-        mertik_device.set_light_brightness(96)
-        cmd_bytes = mock_socket.sendall.call_args[0][0]
-        payload = cmd_bytes.hex()[len(send_command_prefix):]
-        device_code = payload[8:12]
-        assert device_code == "3939"  # 39 (no skip applied)
+        """Brightness 128 -> middle level BB."""
+        assert self._sent_level(mertik_device, mock_socket, 128) == "BB"
 
     def test_brightness_near_max(self, mertik_device, mock_socket):
-        """Brightness 254 (just below max)."""
-        # normalized=(253/254)*100=99.6, l=36+round(7.97)=36+8=44, >=40 so l=45
-        mock_socket.sendall.reset_mock()
-        mertik_device.set_light_brightness(254)
-        cmd_bytes = mock_socket.sendall.call_args[0][0]
-        payload = cmd_bytes.hex()[len(send_command_prefix):]
-        device_code = payload[8:12]
-        assert device_code == "4545"  # 45
+        """Brightness 254 -> highest level FB."""
+        assert self._sent_level(mertik_device, mock_socket, 254) == "FB"
 
-    def test_brightness_low(self, mertik_device, mock_socket):
-        """Brightness 2 -> very low normalized value."""
-        # normalized=(1/254)*100=0.394, l=36+round(0.031)=36+0=36
-        mock_socket.sendall.reset_mock()
-        mertik_device.set_light_brightness(2)
-        cmd_bytes = mock_socket.sendall.call_args[0][0]
-        payload = cmd_bytes.hex()[len(send_command_prefix):]
-        device_code = payload[8:12]
-        assert device_code == "3636"  # 36 (no skip)
+    @pytest.mark.parametrize("index,level", enumerate(["77", "88", "99", "AA", "BB", "CC", "DD", "EE", "FB"]))
+    def test_round_trip(self, mertik_device, mock_socket, index, level):
+        """The brightness read back for each level sends that same level again."""
+        mock_socket.recv.return_value = _build_status_bytes(
+            light_level=int(level, 16), status_bits="8004"
+        )
+        mertik_device.refresh_status()
+        brightness = mertik_device.light_brightness
+        assert brightness == round(1 + index * 254 / 8)
+        assert self._sent_level(mertik_device, mock_socket, brightness) == level
 
 
 class TestConnectionHandling:
@@ -461,23 +442,33 @@ class TestAllFlameHeightSteps:
 class TestBrightnessEdgeCases:
     """Test light brightness edge cases for safe refactoring."""
 
-    def test_light_level_below_100_clamps_to_zero(self, mock_socket):
-        """Light level below 100 with light on should clamp brightness to 0."""
-        # 0x50 = 80, brightness = round(((80-100)/151)*255) = -34, clamped to 0
+    def test_light_level_below_lowest_maps_to_lowest(self, mock_socket):
+        """Light on at a dark level (e.g. 0x66 set by older versions) -> lowest brightness."""
         mock_socket.recv.return_value = _build_status_bytes(
-            light_level=0x50, status_bits="8004"  # light on
+            light_level=0x66, status_bits="8004"  # light on
         )
         device = Mertik("192.168.1.100")
-        assert device.light_brightness == 0
+        assert device.light_brightness == 1
 
-    def test_light_level_mid_range(self, mock_socket):
-        """Light level in mid range with light on."""
-        # 0xAF = 175, brightness = round(((175-100)/151)*255) = round(126.6) = 127
+    def test_light_level_between_levels(self, mock_socket):
+        """A level set by the MyFire app slider maps to the nearest level (0xAF -> AA)."""
         mock_socket.recv.return_value = _build_status_bytes(
             light_level=0xAF, status_bits="8004"
         )
         device = Mertik("192.168.1.100")
-        assert device.light_brightness == 127
+        assert device.light_brightness == round(1 + 3 * 254 / 8)
+
+    def test_light_level_zero_keeps_last_brightness(self, mock_socket):
+        """The level reads 00 for a moment while igniting; keep the last brightness."""
+        mock_socket.recv.return_value = _build_status_bytes(
+            light_level=0xFB, status_bits="8004"
+        )
+        device = Mertik("192.168.1.100")
+        mock_socket.recv.return_value = _build_status_bytes(
+            light_level=0x00, status_bits="8004"
+        )
+        device.refresh_status()
+        assert device.light_brightness == 255
 
 
 class TestGuardFlame:
